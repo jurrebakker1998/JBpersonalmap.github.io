@@ -76,6 +76,7 @@
             padding: 0;
             color: white;
             font-family: 'DM Mono', monospace;
+            z-index: 1000;
         }
         .controls h3 {
             margin: 0 0 10px 0;
@@ -94,6 +95,7 @@
             font-size: 13px;
             text-align: left;
             text-decoration: underline;
+            pointer-events: auto;
         }
         .controls button:hover {
             opacity: 0.7;
@@ -838,6 +840,16 @@
         const width = window.innerWidth;
         const height = window.innerHeight;
 
+        // Start background drone on first user interaction
+        let droneStarted = false;
+        function startDrone() {
+            if (!droneStarted) {
+                const drone = document.getElementById('background-drone');
+                drone.play().catch(e => console.log('Audio playback failed:', e));
+                droneStarted = true;
+            }
+        }
+
         const svg = d3.select("#graph")
             .attr("width", width)
             .attr("height", height);
@@ -913,6 +925,7 @@
             })
             .on("click", (event, d) => {
                 event.stopPropagation();
+                startDrone(); // Start drone on first click
                 const clickSound = document.getElementById('click-sound');
                 clickSound.currentTime = 0;
                 clickSound.play();
