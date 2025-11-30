@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Network Graph</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'DM Mono', monospace;
+            background-color: #2a2a2a;
+            overflow: hidden;
+        }
+        #background-video {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            z-index: -1;
+            opacity: 0.5;
+        }
+        #graph {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            z-index: 1;
+        }
+        .node {
+            cursor: pointer;
+            stroke: #999;
+            stroke-width: 2px;
+            transition: r 0.2s ease, stroke-width 0.2s ease;
+        }
+        .node:hover {
+            stroke-width: 3px;
+            filter: brightness(1.2);
+        }
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.2);
+                opacity: 0.8;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        .node-label {
+            fill: white;
+            font-size: 12px;
+            pointer-events: none;
+            text-anchor: middle;
+            user-select: none;
+        }
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+            stroke-width: 1.5px;
+        }
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: transparent;
+            padding: 0;
+            color: white;
+            font-family: 'DM Mono', monospace;
+        }
+        .controls h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            font-weight: 400;
+        }
+        .controls button {
+            display: block;
+            margin: 5px 0;
+            padding: 0;
+            background: none;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-family: 'DM Mono', monospace;
+            font-size: 13px;
+            text-align: left;
+            text-decoration: underline;
+        }
+        .controls button:hover {
+            opacity: 0.7;
+        }
+        .info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: transparent;
+            padding: 10px;
+            color: white;
+            font-size: 14px;
+            max-width: 300px;
+        }
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: transparent;
+            padding: 10px;
+            font-size: 12px;
+            color: white;
+        }
+        .legend h4 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+        }
+        .legend div {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+        .legend span {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            margin-right: 8px;
+            border-radius: 2px;
+        }
+        .popup {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            max-width: 350px;
+            display: none;
+            z-index: 1000;
+        }
+        .popup.active {
+            display: block;
+        }
+        .popup-header {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+            cursor: move;
+            user-select: none;
+        }
+        .popup-content {
+            font-size: 14px;
+            color: #555;
+            line-height: 1.6;
+        }
+        .popup-image {
+            width: 100%;
+            max-width: 310px;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+        .popup-content p {
+            margin: 8px 0;
+        }
+        .popup-content strong {
+            color: #333;
+        }
+        .popup-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #999;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+        }
+        .popup-close:hover {
+            background: #777;
+        }
+    </style>
+</head>
+<body>
+    <audio id="click-sound" preload="auto">
+        <source src="Assets/Sounds/click.wav" type="audio/wav">
+    </audio>
+    <audio id="background-drone" autoplay loop>
+        <source src="Assets/Sounds/Drone.mp3" type="audio/mpeg">
+    </audio>
+    <video id="background-video" autoplay loop muted playsinline>
+        <source src="Assets/VisualBack.mp4" type="video/mp4">
+    </video>
+    <div class="controls">
+        <h3 style="margin: 0 0 10px 0;">Controls</h3>
+        <button onclick="resetZoom()">Reset View</button>
+        <button onclick="togglePhysics()">Toggle Physics</button>
+    </div>
+    <div class="info">
+        <strong>Instructions:</strong><br>
+        • Click nodes for details<br>
+        • Drag nodes to move them<br>
+        • Scroll to zoom<br>
+        • Click and drag background to pan
+    </div>
+    <div class="legend">
+        <h4>Legend</h4>
+        <div><span style="background: #ff6b6b;"></span> Artists</div>
+        <div><span style="background: #4ecdc4;"></span> Design</div>
+        <div><span style="background: #45b7d1;"></span> Festivals</div>
+        <div><span style="background: #96ceb4;"></span> Platforms</div>
+        <div><span style="background: #ffeaa7;"></span> Funds</div>
+        <div><span style="background: #1e5a9e;"></span> Center</div>
+    </div>
+    <div class="popup" id="popup">
+        <button class="popup-close" onclick="closePopup()">×</button>
+        <div class="popup-header" id="popup-title"></div>
+        <div class="popup-content" id="popup-content"></div>
+    </div>
+    <svg id="graph"></svg>
+
+    <script>
+        // Sample data - replace with your own!
+        const data = {
+            nodes: [
+                { 
+                    id: "Artists", 
+                    category: "artists", 
+                    size: 25,
+                    x: -300,
+                    y: -150,
+                    info: {
+                        description: "Creative individuals in various art forms",
+                        contact: "artists@example.com",
+                        location: "Global",
+                        website: "https://example.com/artists"
+                    }
+                },
+                { 
+                    id: "404.zero", 
+                    category: "artists", 
+                    size: 18,
+                    image: "Assets/logos/404zero.jpeg",
+                    info: {
+                        description: "Street artist known for satirical works",
+                        contact: "hello@404zero.com",
+                        location: "Berlin",
+                        website: "https://www.404zero.com/"
+                    }
+                },
+                { 
+                    id: "Emanuel Nijkerk", 
+                    category: "artists", 
+                    size: 18,
+                    info: {
+                        description: "Audio visual artist",
+                        contact: "ebn.licht@gmail.com",
+                        location: "Netherlands",
+                        website: "https://emanuelnijkerk.nl/"
+                    }
+                },
+                { 
+                    id: "JaqNoise", 
+                    category: "artists", 
+                    size: 18,
+                    info: {
+                        description: "Sound Artist & Curator",
+                        contact: "jacqnoise@gmail.com",
+                        location: "Berlin",
+                        website: "https://jacqnoise.cargo.site/"
+                    }
+                },
+                { 
+                    id: "Riccardo Marogna", 
+                    category: "artists", 
+                    size: 18,
+                    image: "Assets/logos/Riccardo.png",
+                    info: {
+                        description: "Sound artist & Teacher",
+                        contact: "info@riccardomarogna.com",
+                        location: "The Hague, Netherlands",
+                        website: "https://riccardomarogna.com/"
+                    }
+                },
+                { 
+                    id: "Matteo Marangoni", 
+                    category: "artists", 
+                    size: 18,
+                    image: "Assets/logos/Matteo.jpg",
+                    info: {
+                        description: "Sound Artist",
+                        contact: "matteo@matteomarangoni.com",
+                        location: "Den Haag, Netherlands",
+                        website: "https://matteomarangoni.com/"
+                    }
+                },
+                { 
+                    id: "Jin Lee", 
+                    category: "artists", 
+                    size: 18,
+                    image: "Assets/logos/JinLee.png",
+                    info: {
+                        description: "Audio Visual Artist",
+                        contact: "j@jinlee.de",
+                        location: "Berlin",
+                        website: "https://www.jinlee.de"
+                    }
+                },
+                { 
+                    id: "Ralph Baecker", 
+                    category: "artists", 
+                    size: 18,
+                    image: "Assets/logos/Ralph Beacker.jpg",
+                    info: {
+                        description: "Installation Artist",
+                        contact: "studio@rlfbckr.io",
+                        location: "Berlin",
+                        website: "https://rlfbckr.io/project/"
+                    }
+                },
+                { 
+                    id: "Edwin van de Heide", 
+                    category: "artists", 
+                    size: 18,
+                    image: "Assets/logos/Edwin.jpg",
+                    info: {
+                        description: "Sound Artist",
+                        contact: "mail@evdh.net",
+                        location: "Netherlands",
+                        website: "https://www.evdh.net "
+                    }
+                },
+                { 
+                    id: "Gijs Gieskes", 
+                    category: "artists", 
+                    size: 18,
+                    image: "Assets/logos/GijsGieskes.jpg",
+                    info: {
+                        description: "sound artist & eurorack designer",
+                        contact: "gieskes@gmail.com",
+                        location: "Netherlands",
+                        website: "https://gieskes.nl"
+                    }
+                },
+                { 
+                    id: "Sound Artists", 
+                    category: "artists", 
+                    size: 20,
+                    info: {
+                        description: "Artists specializing in sound and music",
+                        contact: "soundartists@example.com",
+                        location: "Global",
+                        website: "https://example.com/soundartists"
+                    }
+                },
+                { 
+                    id: "Visual Artists", 
+                    category: "artists", 
+                    size: 20,
+                    info: {
+                        description: "Artists focusing on visual arts",
+                        contact: "visualartists@example.com",
+                        location: "Global",
+                        website: "https://example.com/visualartists"
+                    }
+                },
+                { 
+                    id: "Design Studios", 
+                    category: "design", 
+                    size: 25,
+                    x: 300,
+                    y: -150,
+                    info: {
+                        description: "Professional design studios offering services",
+                        contact: "design@example.com",
+                        location: "Various",
+                        website: "https://example.com/design"
+                    }
+                },
+                { 
+                    id: "Erica Synths", 
+                    category: "design", 
+                    size: 18,
+                    image: "Assets/logos/Erica-Logo-Shop.png",
+                    info: {
+                        description: "Synthesizer manufacturer and design studio",
+                        contact: "/",
+                        location: "Berlin, Germany",
+                        website: "https://www.ericasynths.lv"
+                    }
+                },
+                { 
+                    id: "Koma Elektronik", 
+                    category: "design", 
+                    size: 18,
+                    image: "Assets/logos/KOMA.png",
+                    info: {
+                        description: "Music electronics development and manufacturing",
+                        contact: "+49(0)3091557028",
+                        location: "Berlin",
+                        website: "https://koma-elektronik.com/new/"
+                    }
+                },
+                { 
+                    id: "Willem Twee studios", 
+                    category: "design", 
+                    size: 18,
+                    image: "Assets/logos/WillemTwee.png",
+                    info: {
+                        description: "Sound Studio",
+                        contact: "info@willem-twee.nl",
+                        location: "Den Bosch, Netherlands",
+                        website: "https://www.willem-twee.nl/"
+                    }
+                },
+                { 
+                    id: "Studio Robert Henke", 
+                    category: "design", 
+                    size: 18,
+                    image: "Assets/logos/RobertHennke.jpg",
+                    info: {
+                        description: "Sound Studio",
+                        contact: "office@roberthenke.com",
+                        location: "Berlin",
+                        website: "https://roberthenke.com/"
+                    }
+                },
+                { 
+                    id: "Lumus Instruments", 
+                    category: "design", 
+                    size: 18,
+                    image: "Assets/logos/Lumus.png",
+                    info: {
+                        description: "Engineers in AV technology",
+                        contact: "info@lumus-instruments.com",
+                        location: "Amsterdam",
+                        website: "https://www.lumus-instruments.com/"
+                    }
+                },
+                { 
+                    id: "Acid Solder Club", 
+                    category: "design", 
+                    size: 18,
+                    image: "Assets/logos/AcidSolderClub.png",
+                    info: {
+                        description: "Design Studio / Collective",
+                        contact: "acidsolderclub@gmail.com",
+                        location: "Utrecht, Netherlands",
+                        website: "https://acidsolderclub.com"
+                    }
+                },
+                { 
+                    id: "Studio Paul Tas (error instruments)", 
+                    category: "design", 
+                    size: 18,
+                    image: "Assets/logos/ErrorInstruments.png",
+                    info: {
+                        description: "Synth DIY kits and design studio",
+                        contact: "studiopaultas@hotmail.com",
+                        location: "Amsterdam",
+                        website: "https://www.errorinstruments.com"
+                    }
+                },
+                { 
+                    id: "This is not Rocket Science", 
+                    category: "design", 
+                    size: 18,
+                    image: "Assets/logos/ThisIsNotRocketScience.png",
+                    info: {
+                        description: "Collectice, synth DIY kits and design studio",
+                        contact: "priscilla@thisisnotrocketscience.nl",
+                        location: "Amsterdam",
+                        website: "https://www.thisisnotrocketscience.nl"
+                    }
+                },
+                { 
+                    id: "DIY", 
+                    category: "design", 
+                    size: 20,
+                    info: {
+                        description: "Do-it-yourself design approaches and independent creators",
+                        contact: "diy@example.com",
+                        location: "Global",
+                        website: "https://example.com/diy"
+                    }
+                },
+                { 
+                    id: "Studios", 
+                    category: "design", 
+                    size: 20,
+                    info: {
+                        description: "Professional design studios and agencies",
+                        contact: "studios@example.com",
+                        location: "Various",
+                        website: "https://example.com/studios"
+                    }
+                },
+                { 
+                    id: "Festivals", 
+                    category: "festivals", 
+                    size: 25,
+                    x: -300,
+                    y: 150,
+                    info: {
+                        description: "Events and festivals showcasing art and design",
+                        contact: "festivals@example.com",
+                        location: "Various",
+                        website: "https://example.com/festivals"
+                    }
+                },
+                { 
+                    id: "Conflux festival ", 
+                    category: "festivals", 
+                    size: 18,
+                    image: "Assets/logos/Conflux.png",
+                    info: {
+                        description: "Conflux is a festival exploring multisensory encounters, urgent ideas, contemporary art, and experimental music.",
+                        contact: "info@confluxfestival.nl",
+                        location: "Rotterdam, Netherlands",
+                        website: "https://www.confluxfestival.nl"
+                    }
+                },
+                { 
+                    id: "Luna Festival ", 
+                    category: "festivals", 
+                    size: 18,
+                    image: "Assets/logos/LUNA.png",
+                    info: {
+                        description: "Visual Festival (Media Art Friesland)",
+                        contact: "mediaartfriesland@gmail.com",
+                        location: "Leeuwarden, Netherlands",
+                        website: "https://mediaartfriesland.nl/home-3/"
+                    }
+                },
+                { 
+                    id: "Superbooth Berlin", 
+                    category: "festivals", 
+                    size: 18,
+                    image: "Assets/logos/Superbooth.png",
+                    info: {
+                        description: "Synthesizer and music technology festival",
+                        contact: "ak@superbooth.com",
+                        location: "Berlin, Germany",
+                        website: "https://www.superbooth.com/en/"
+                    }
+                },
+                { 
+                    id: "Rewire Festival", 
+                    category: "festivals", 
+                    size: 18,
+                    image: "Assets/logos/Rewire-logo-2018.png",
+                    info: {
+                        description: "Festival for adventurous music and art",
+                        contact: "hello@rewirefestival.nl",
+                        location: "The Hague, Netherlands",
+                        website: "https://www.rewirefestival.nl"
+                    }
+                },
+                { 
+                    id: "Schemerlicht Festival", 
+                    category: "festivals", 
+                    size: 18,
+                    image: "Assets/logos/Schemerlicht.jpeg",
+                    info: {
+                        description: "Audio visual festival",
+                        contact: "info@schemerlichtfestival.nl",
+                        location: "Nijmegen, Netherlands",
+                        website: "http://schemerlichtfestival.nl/"
+                    }
+                },
+                { 
+                    id: "Impakt Festival", 
+                    category: "festivals", 
+                    size: 18,
+                    image: "Assets/logos/IMPAKT.png",
+                    info: {
+                        description: "Festival for media art and culture",
+                        contact: "info@impakt.nl",
+                        location: "Utrecht, Netherlands",
+                        website: "https://impakt.nl/nl/"
+                    }
+                },
+                { 
+                    id: "Dutch Modular Fest", 
+                    category: "festivals", 
+                    size: 18,
+                    image: "Assets/logos/DutchModularFest.png",
+                    info: {
+                        description: "Modular Synth Festival",
+                        contact: "info@dutchmodularfest.com",
+                        location: "Worm Rotterdam, Netherlands",
+                        website: "https://worm.org/production/dutch-modular-fest-2025/"
+                    }
+                },
+                { 
+                    id: "Sonar Festival", 
+                    category: "festivals", 
+                    size: 18,
+                    image: "Assets/logos/Sonar.jpg",
+                    info: {
+                        description: "Music Innovation and Technology Festival",
+                        contact: "...",
+                        location: "Barcelona, Spain",
+                        website: "https://sonar.es/en"
+                    }
+                },
+                { 
+                    id: "Sonic Festivals", 
+                    category: "festivals", 
+                    size: 20,
+                    info: {
+                        description: "Festivals focusing on sound, music, and audio arts",
+                        contact: "sonicfestivals@example.com",
+                        location: "Various",
+                        website: "https://example.com/sonicfestivals"
+                    }
+                },
+                { 
+                    id: "Visual Festivals", 
+                    category: "festivals", 
+                    size: 20,
+                    info: {
+                        description: "Festivals emphasizing visual arts and design",
+                        contact: "visualfestivals@example.com",
+                        location: "Various",
+                        website: "https://example.com/visualfestivals"
+                    }
+                },
+                { 
+                    id: "Platforms", 
+                    category: "platforms", 
+                    size: 25,
+                    x: 300,
+                    y: 150,
+                    info: {
+                        description: "Online platoforms",
+                        contact: ".",
+                        location: "Verious",
+                        website: "."
+                    }
+                },
+                { 
+                    id: "V2_Open_Lab", 
+                    category: "platforms", 
+                    size: 18,
+                    image: "Assets/logos/V2.png",
+                    info: {
+                        description: "Creative online space for art and technology",
+                        contact: "v2@v2.nl",
+                        location: "Rotterdam, Netherlands",
+                        website: "https://v2.nl/pages/open_lab-2"
+                    }
+                },
+                { 
+                    id: "CCU Utecht", 
+                    category: "platforms", 
+                    size: 18,
+                    image: "Assets/logos/ccu_black.jpg",
+                    info: {
+                        description: "Communtity Creative Coding Utrecht",
+                        contact: "-",
+                        location: "Utrecht, Netherlands",
+                        website: "https://creativecodingutrecht.nl/nl"
+                    }
+                },
+                { 
+                    id: "III / Instrument Inventors Initiative", 
+                    category: "platforms", 
+                    size: 18,
+                    image: "Assets/logos/iii-logo-big.png",
+                    info: {
+                        description: "Collective Instrument Makers",
+                        contact: ".",
+                        location: "The Hague, Netherlands",
+                        website: "https://instrumentinventors.org/?lang=nl"
+                    }
+                },
+                { 
+                    id: "Sonic Acts", 
+                    category: "platforms", 
+                    size: 18,
+                    image: "Assets/logos/Sonic-Acts-logo-large()55mm).png",
+                    info: {
+                        description: "Online community for artists to showcase work",
+                        contact: "info@sonicacts.com",
+                        location: "Online",
+                        website: "https://sonicacts.com"
+                    }
+                },
+                { 
+                    id: "Funds", 
+                    category: "funds", 
+                    size: 25,
+                    x: 0,
+                    y: 300,
+                    info: {
+                        description: "Funding opportunities for creative projects",
+                        contact: "funds@example.com",
+                        location: "Global",
+                        website: "https://example.com/funds"
+                    }
+                },
+                { 
+                    id: "Kickstarter", 
+                    category: "funds", 
+                    size: 18,
+                    image: "Assets/logos/Kickstarter-Logo.png",
+                    info: {
+                        description: "Crowdfunding platform for creative projects",
+                        contact: "...",
+                        location: "Online",
+                        website: "https://www.kickstarter.com/?ref=nav"
+                    }
+                },
+                { 
+                    id: "Mondriaan Fonds", 
+                    category: "funds", 
+                    size: 18,
+                    image: "Assets/logos/Mondriaan.png",
+                    info: {
+                        description: "Kunst Subsidie voor kunstenaars en culturele instellingen",
+                        contact: "info@mondriaanfonds.nl",
+                        location: "Amsterdam, Netherlands",
+                        website: "https://www.mondriaanfonds.nl"
+                    }
+                },
+                { 
+                    id: "Stimuleringsfonds", 
+                    category: "funds", 
+                    size: 18,
+                    image: "Assets/logos/Stimuleringsfonds.png",
+                    info: {
+                        description: "Subsidie creatieve cultuur",
+                        contact: "info@stimuleringsfonds.nl",
+                        location: "Amsterdam, Netherlands",
+                        website: "https://www.stimuleringsfonds.nl/"
+                    }
+                },
+                { 
+                    id: "Erasmus+ Creative Industries Fund NL", 
+                    category: "funds", 
+                    size: 18,
+                    image: "Assets/logos/erasmusplus.jpg",
+                    info: {
+                        description: "Subsidie stages in het buitenland.",
+                        contact: " info@erasmusplus.nl.",
+                        location: "Amsterdam, Netherlands",
+                        website: "https://erasmus-plus.ec.europa.eu/nl/opportunities/opportunities-for-individuals/students/traineeships-abroad-for-students"
+                    }
+                },
+                { 
+                    id: "Network Jurre", 
+                    category: "center", 
+                    size: 30,
+                    x: 0,
+                    y: 0,
+                    image: "Assets/logos/Jurre.png",
+                    info: {
+                        description: "Central hub of the network",
+                        contact: "jurre@example.com",
+                        location: "Center",
+                        website: "https://example.com/network"
+                    }
+                }
+            ],
+            links: [
+                { source: "Network Jurre", target: "Artists" },
+                { source: "Network Jurre", target: "Design Studios" },
+                { source: "Network Jurre", target: "Festivals" },
+                { source: "Network Jurre", target: "Platforms" },
+                { source: "Network Jurre", target: "Funds" },
+                { source: "Sound Artists", target: "404.zero" },
+                { source: "Sound Artists", target: "JaqNoise" },
+                { source: "Sound Artists", target: "Riccardo Marogna" },
+                { source: "Sound Artists", target: "Matteo Marangoni" },
+                { source: "Sound Artists", target: "Edwin van de Heide" },
+                { source: "Visual Artists", target: "Emanuel Nijkerk" },
+                { source: "Visual Artists", target: "Jin Lee" },
+                { source: "Visual Artists", target: "Ralph Baecker" },
+                { source: "Sound Artists", target: "Gijs Gieskes" },
+                { source: "Artists", target: "Sound Artists" },
+                { source: "Artists", target: "Visual Artists" },
+                { source: "Sonic Festivals", target: "Conflux festival " },
+                { source: "Sonic Festivals", target: "Superbooth Berlin" },
+                { source: "Sonic Festivals", target: "Rewire Festival" },
+                { source: "Sonic Festivals", target: "Dutch Modular Fest" },
+                { source: "Sonic Festivals", target: "Sonar Festival" },
+                { source: "Visual Festivals", target: "Luna Festival " },
+                { source: "Visual Festivals", target: "Schemerlicht Festival" },
+                { source: "Visual Festivals", target: "Impakt Festival" },
+                { source: "Festivals", target: "Sonic Festivals" },
+                { source: "Festivals", target: "Visual Festivals" },
+                { source: "Studios", target: "Erica Synths" },
+                { source: "Studios", target: "Koma Elektronik" },
+                { source: "Studios", target: "Willem Twee studios" },
+                { source: "Studios", target: "Studio Robert Henke" },
+                { source: "Studios", target: "Lumus Instruments" },
+                { source: "DIY", target: "Acid Solder Club" },
+                { source: "DIY", target: "Studio Paul Tas (error instruments)" },
+                { source: "DIY", target: "This is not Rocket Science" },
+                { source: "Design Studios", target: "DIY" },
+                { source: "Design Studios", target: "Studios" },
+                { source: "Platforms", target: "V2_Open_Lab" },
+                { source: "Platforms", target: "CCU Utecht" },
+                { source: "Platforms", target: "III / Instrument Inventors Initiative" },
+                { source: "Platforms", target: "Sonic Acts" },
+                { source: "Funds", target: "Kickstarter" },
+                { source: "Funds", target: "Mondriaan Fonds" },
+                { source: "Funds", target: "Stimuleringsfonds" },
+                { source: "Funds", target: "Erasmus+ Creative Industries Fund NL" }
+            ]
+        };
+
+        // Color scheme
+        const colorScale = {
+            artists: "#ff6b6b",
+            design: "#4ecdc4",
+            festivals: "#45b7d1",
+            platforms: "#96ceb4",
+            funds: "#ffeaa7",
+            center: "#1e5a9e"
+        };
+
+        // Setup
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        const svg = d3.select("#graph")
+            .attr("width", width)
+            .attr("height", height);
+
+        const g = svg.append("g");
+
+        // Zoom behavior
+        const zoom = d3.zoom()
+            .scaleExtent([0.1, 4])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+
+        svg.call(zoom);
+
+        // Force simulation with improved parameters
+        let simulation = d3.forceSimulation(data.nodes)
+            .force("link", d3.forceLink(data.links).id(d => d.id).distance(d => {
+                // Longer distances for main category connections
+                if (d.source.category === 'center' || d.target.category === 'center') return 150;
+                return 80;
+            }))
+            .force("charge", d3.forceManyBody().strength(-400))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force("collision", d3.forceCollide().radius(d => d.size + 15))
+            .alphaDecay(0.02);
+
+        // Create defs for image patterns
+        const defs = svg.append("defs");
+        
+        data.nodes.forEach((d, i) => {
+            if (d.image) {
+                const pattern = defs.append("pattern")
+                    .attr("id", `image-${i}`)
+                    .attr("width", 1)
+                    .attr("height", 1)
+                    .attr("patternContentUnits", "objectBoundingBox");
+                
+                pattern.append("image")
+                    .attr("xlink:href", d.image)
+                    .attr("width", 1)
+                    .attr("height", 1)
+                    .attr("preserveAspectRatio", "xMidYMid slice");
+            }
+        });
+
+        // Create links
+        const link = g.append("g")
+            .selectAll("line")
+            .data(data.links)
+            .join("line")
+            .attr("class", "link");
+
+        // Create nodes
+        const node = g.append("g")
+            .selectAll("circle")
+            .data(data.nodes)
+            .join("circle")
+            .attr("class", "node")
+            .attr("r", d => d.size)
+            .attr("fill", (d, i) => d.image ? `url(#image-${i})` : colorScale[d.category])
+            .on("mouseover", function(event, d) {
+                d3.select(this)
+                    .transition()
+                    .duration(200)
+                    .attr("r", d.size * 1.15);
+            })
+            .on("mouseout", function(event, d) {
+                d3.select(this)
+                    .transition()
+                    .duration(200)
+                    .attr("r", d.size);
+            })
+            .on("click", (event, d) => {
+                event.stopPropagation();
+                const clickSound = document.getElementById('click-sound');
+                clickSound.currentTime = 0;
+                clickSound.play();
+                
+                // Find parent nodes in the link hierarchy
+                const parentNodes = new Set();
+                
+                // Function to find all parents recursively
+                function findParents(nodeId) {
+                    data.links.forEach(link => {
+                        if (link.target === nodeId || (link.target.id && link.target.id === nodeId)) {
+                            const sourceId = link.source.id || link.source;
+                            parentNodes.add(sourceId);
+                            findParents(sourceId);
+                        }
+                    });
+                }
+                
+                // Find all parent nodes for the clicked node
+                findParents(d.id);
+                
+                // Always pulse Network Jurre
+                parentNodes.add("Network Jurre");
+                
+                // Pulse effect on parent bubbles
+                node.each(function(nodeData) {
+                    if (parentNodes.has(nodeData.id)) {
+                        const parentNode = d3.select(this);
+                        const originalSize = nodeData.size;
+                        
+                        parentNode
+                            .transition()
+                            .duration(300)
+                            .attr("r", originalSize * 1.3)
+                            .transition()
+                            .duration(300)
+                            .attr("r", originalSize);
+                    }
+                });
+                
+                showPopup(d, event);
+            })
+            .call(drag(simulation));
+
+        // Create labels
+        const label = g.append("g")
+            .selectAll("text")
+            .data(data.nodes)
+            .join("text")
+            .attr("class", "node-label")
+            .text(d => d.id)
+            .attr("dy", d => d.size + 15);
+
+        // Update positions on simulation tick
+        simulation.on("tick", () => {
+            link
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+
+            node
+                .attr("cx", d => d.x)
+                .attr("cy", d => d.y);
+
+            label
+                .attr("x", d => d.x)
+                .attr("y", d => d.y);
+        });
+
+        // Drag behavior
+        function drag(simulation) {
+            function dragstarted(event) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                event.subject.fx = event.subject.x;
+                event.subject.fy = event.subject.y;
+            }
+
+            function dragged(event) {
+                event.subject.fx = event.x;
+                event.subject.fy = event.y;
+            }
+
+            function dragended(event) {
+                if (!event.active) simulation.alphaTarget(0);
+                event.subject.fx = null;
+                event.subject.fy = null;
+            }
+
+            return d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended);
+        }
+
+        // Control functions
+        let physicsEnabled = true;
+
+        function showPopup(nodeData, event) {
+            const popup = document.getElementById('popup');
+            const title = document.getElementById('popup-title');
+            const content = document.getElementById('popup-content');
+            
+            title.textContent = nodeData.id;
+            
+            const info = nodeData.info || {};
+            const imageHTML = nodeData.image ? `<img src="${nodeData.image}" class="popup-image" alt="${nodeData.id}">` : '';
+            
+            content.innerHTML = `
+                ${imageHTML}
+                <p><strong>Description:</strong> ${info.description || 'No description available'}</p>
+                <p><strong>Contact:</strong> ${info.contact || 'N/A'}</p>
+                <p><strong>Location:</strong> ${info.location || 'N/A'}</p>
+                <p><strong>Website:</strong> ${info.website && info.website !== '.' ? `<a href="${info.website}" target="_blank" rel="noopener noreferrer">${info.website}</a>` : 'N/A'}</p>
+                <p><strong>Category:</strong> ${nodeData.category}</p>
+            `;
+            
+            popup.classList.add('active');
+            
+            // Position popup near the click
+            const x = event.pageX;
+            const y = event.pageY;
+            popup.style.left = Math.min(x + 20, window.innerWidth - 370) + 'px';
+            popup.style.top = Math.min(y - 50, window.innerHeight - 300) + 'px';
+        }
+
+        function closePopup() {
+            document.getElementById('popup').classList.remove('active');
+        }
+
+        // Popup drag functionality
+        let isDraggingPopup = false;
+        let popupOffsetX = 0;
+        let popupOffsetY = 0;
+
+        const popup = document.getElementById('popup');
+        const popupHeader = document.getElementById('popup-title');
+
+        popupHeader.addEventListener('mousedown', (e) => {
+            isDraggingPopup = true;
+            popupOffsetX = e.clientX - popup.offsetLeft;
+            popupOffsetY = e.clientY - popup.offsetTop;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isDraggingPopup) {
+                popup.style.left = (e.clientX - popupOffsetX) + 'px';
+                popup.style.top = (e.clientY - popupOffsetY) + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDraggingPopup = false;
+        });
+
+        // Close popup when clicking outside
+        svg.on('click', closePopup);
+
+        function resetZoom() {
+            svg.transition().duration(750).call(
+                zoom.transform,
+                d3.zoomIdentity
+            );
+        }
+
+        function togglePhysics() {
+            physicsEnabled = !physicsEnabled;
+            if (physicsEnabled) {
+                simulation.alpha(0.3).restart();
+            } else {
+                simulation.stop();
+            }
+        }
+
+        // Responsive resize
+        window.addEventListener('resize', () => {
+            const newWidth = window.innerWidth;
+            const newHeight = window.innerHeight;
+            svg.attr("width", newWidth).attr("height", newHeight);
+            simulation.force("center", d3.forceCenter(newWidth / 2, newHeight / 2));
+            simulation.alpha(0.3).restart();
+        });
+    </script>
+</body>
+</html>
