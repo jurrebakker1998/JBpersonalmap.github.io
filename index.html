@@ -842,11 +842,19 @@
 
         // Start background drone on first user interaction
         let droneStarted = false;
+        let videoStarted = false;
         function startDrone() {
             if (!droneStarted) {
                 const drone = document.getElementById('background-drone');
                 drone.play().catch(e => console.log('Audio playback failed:', e));
                 droneStarted = true;
+            }
+        }
+        function startVideo() {
+            if (!videoStarted) {
+                const video = document.getElementById('background-video');
+                video.play().catch(e => console.log('Video playback failed:', e));
+                videoStarted = true;
             }
         }
 
@@ -926,6 +934,7 @@
             .on("click", (event, d) => {
                 event.stopPropagation();
                 startDrone(); // Start drone on first click
+                startVideo(); // Start video on first click
                 const clickSound = document.getElementById('click-sound');
                 clickSound.currentTime = 0;
                 clickSound.play();
